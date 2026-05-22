@@ -118,11 +118,10 @@ if df_vacantes is not None and df_entrenamiento is not None:
 
         st.markdown("---")
 
-        # --- 🚨 NUEVA SECCIÓN: SLA Y RETENCIÓN POR ZONA ---
+        # --- SECCIÓN 2: SLA Y RETENCIÓN POR ZONA ---
         st.subheader("📈 Métricas Críticas: SLA y Retención por Zona")
         col_sla, col_ret = st.columns(2)
         
-        # Identificar dinámicamente columnas de zona y fechas
         zona_col = 'zona' if 'zona' in df_ent_filtrado.columns else None
         f_ingreso = [c for c in df_ent_filtrado.columns if 'ingreso' in c][0] if [c for c in df_ent_filtrado.columns if 'ingreso' in c] else None
         f_liberacion = [c for c in df_ent_filtrado.columns if 'liberación' in c or 'liberacion' in c][0] if [c for c in df_ent_filtrado.columns if 'liberación' in c or 'liberacion' in c] else None
@@ -130,12 +129,10 @@ if df_vacantes is not None and df_entrenamiento is not None:
 
         with col_sla:
             if f_ingreso and f_liberacion and zona_col:
-                # Calcular días de entrenamiento (SLA) de forma segura
                 df_ent_filtrado['date_ingreso'] = pd.to_datetime(df_ent_filtrado[f_ingreso], errors='coerce')
                 df_ent_filtrado['date_libera'] = pd.to_datetime(df_ent_filtrado[f_liberacion], errors='coerce')
                 df_ent_filtrado['sla_dias'] = (df_ent_filtrado['date_libera'] - df_ent_filtrado['date_ingreso']).dt.days
                 
-                # Filtrar valores coherentes para promediar
                 df_sla = df_ent_filtrado[df_ent_filtrado['sla_dias'] >= 0].groupby(zona_col)['sla_dias'].mean().reset_index()
                 df_sla.columns = ['Zona', 'Días Promedio para Liberación']
                 
@@ -152,17 +149,17 @@ if df_vacantes is not None and df_entrenamiento is not None:
 
         with col_ret:
             if zona_col and baja_col:
-                # Si dice "NO" en baja entrenamiento significa que el colaborador se retuvo (Sigue activo)
-                df_ent_filtrado['estatus_empleado'] = df_ent_filtrado[baja_col].astype(str).str.strip().str.upper().apply(
+                bajas_limpias = df_ent_filtrado[baja_col].fillna("NAN").astype(str).str.strip().str.upper()
+                df_ent_filtrado['estatus_empleado'] = bajas_limpias.apply(
                     lambda x: 'Retenido / Activo' if 'NO' in x or 'NAN' in x or x == '' else 'Baja / Deserción'
                 )
                 
                 fig_ret = px.histogram(
                     df_ent_filtrado, x=zona_col, color='estatus_empleado',
-                    barmode='percent', # Muestra la tasa porcentual directa
+                    barmode='percent',
                     title="Porcentaje de Retención vs Deserción por Zona",
                     color_discrete_map={'Retenido / Activo': '#2ecc71', 'Baja / Deserción': '#e74c3c'},
-                    labels={'estatus_empleado': 'Estatus Final'}
+                    labels={'estatus_empleado': 'Estatus Final', 'zona': 'Zona'}
                 )
                 fig_ret.update_layout(template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', yaxis_title="Porcentaje (%)")
                 st.plotly_chart(fig_ret, use_container_width=True)
