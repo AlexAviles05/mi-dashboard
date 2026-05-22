@@ -82,22 +82,37 @@ if df_vacantes is not None and df_entrenamiento is not None:
     
     if 'plaza' in df_vacantes.columns and 'plaza' in df_entrenamiento.columns:
         
-        # Combinar plazas de ambos sets de datos para no perder ninguna zona
-        plazas_totales = sorted(list(set(df_vacantes['plaza'].dropna().unique().tolist() + df_entrenamiento['plaza'].dropna().unique().tolist())))
+        # Combinar todas las plazas únicas del Excel nacional
+        plazas_totales = sorted(list(set(df_vacantes['plaza'].dropna().astype(str).str.strip().unique().tolist() + df_entrenamiento['plaza'].dropna().astype(str).str.strip().unique().tolist())))
         plaza_seleccionada = st.sidebar.multiselect("Filtrar por Plaza:", plazas_totales, default=plazas_totales)
         
         estatus_col = 'estatus' if 'estatus' in df_vacantes.columns else df_vacantes.columns[0]
         estatus_disponibles = sorted(df_vacantes[estatus_col].dropna().unique().tolist())
         estatus_seleccionado = st.sidebar.multiselect("Estatus de Vacante:", estatus_disponibles, default=estatus_disponibles)
 
-        # Filtrar de manera independiente
+        # Filtrar sets de datos
         df_vac_filtrado = df_vacantes[
             (df_vacantes['plaza'].isin(plaza_seleccionada)) & 
             (df_vacantes[estatus_col].isin(estatus_seleccionado))
         ]
         df_ent_filtrado = df_entrenamiento[df_entrenamiento['plaza'].isin(plaza_seleccionada)].copy()
 
-        # --- SECCIÓN 1: METRICS (ACTUALIZADA) ---
+        # 🚨 HOMOLOGACIÓN CRÍTICA CONTRA DUPLICADOS DE ZONA (MÁGICO)
+        if 'zona' in df_ent_filtrado.columns:
+            df_ent_filtrado['zona'] = (
+                df_ent_filtrado['zona']
+                .fillna("SIN ZONA")
+                .astype(str)
+                .str.strip()               # Borra espacios fantasmas al inicio/final
+                .str.upper()               # Todo a MAYÚSCULAS (Centro Sur -> CENTRO SUR)
+                .str.replace('Í', 'I', regex=False) # Quita el acento (PACÍFICO -> PACIFICO)
+                .str.replace('Á', 'A', regex=False)
+                .str.replace('É', 'E', regex=False)
+                .str.replace('Ó', 'O', regex=False)
+                .str.replace('Ú', 'U', regex=False)
+            )
+
+        # --- SECCIÓN 1: METRICS ---
         st.subheader("📌 Resumen Ejecutivo General")
         col1, col2, col3, col4 = st.columns(4)
         
@@ -112,9 +127,8 @@ if df_vacantes is not None and df_entrenamiento is not None:
             st.markdown(f'<div class="metric-box"><div class="metric-title">Tiempo de Cobertura Promedio</div><div class="metric-value">{dias_promedio} días</div></div>', unsafe_allow_html=True)
         
         with col3:
-            # 🚨 NUEVA MÉTRICA: Conteo total de colaboradores registrados en el proceso de entrenamiento
-            total_colaboradores = len(df_ent_filtrado)
-            st.markdown(f'<div class="metric-box"><div class="metric-title">Total Colaboradores en Entto.</div><div class="metric-value">{total_colaboradores}</div></div>', unsafe_allow_html=True)
+            total_colaboradores = df_ent_filtrado['num de colaborador'].dropna().nunique() if 'num de colaborador' in df_ent_filtrado.columns else len(df_ent_filtrado)
+            st.markdown(f'<div class="metric-box"><div class="metric-title">Total Colaboradores Únicos</div><div class="metric-value">{total_colaboradores}</div></div>', unsafe_allow_html=True)
         
         with col4:
             en_sies = len(df_vac_filtrado[df_vac_filtrado[estatus_col].astype(str).str.upper() == 'SIES']) if not df_vac_filtrado.empty else 0
@@ -153,7 +167,7 @@ if df_vacantes is not None and df_entrenamiento is not None:
                     fig_sla.update_layout(template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
                     st.plotly_chart(fig_sla, use_container_width=True)
                 else:
-                    st.info("ℹ️ No hay suficientes fechas válidas en el rango seleccionado para calcular el SLA.")
+                    st.info("ℹ️ No hay suficientes fechas válidas en las plazas seleccionadas para calcular el SLA.")
             else:
                 st.info("Faltan columnas de Fechas de Ingreso/Liberación para calcular el SLA.")
 
@@ -193,7 +207,7 @@ if df_vacantes is not None and df_entrenamiento is not None:
                 fig_vac.update_layout(template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
                 st.plotly_chart(fig_vac, use_container_width=True)
             else:
-                st.info("No hay requerimientos activos en las plazas seleccionadas.")
+                st.warning("ℹ️ Las plazas seleccionadas no tienen requisiciones de vacantes activas registradas en la 'Hoja1'.")
             
         with col_graf2:
             st.subheader("🏃‍♂️ Control de Bajas en Entrenamiento")
