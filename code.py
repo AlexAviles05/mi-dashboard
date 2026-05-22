@@ -82,7 +82,7 @@ if df_vacantes is not None and df_entrenamiento is not None:
     
     if 'plaza' in df_vacantes.columns and 'plaza' in df_entrenamiento.columns:
         
-        # 🚨 SOLUCIÓN DE QA: Combinar plazas de AMBOS archivos para que no falte ninguna zona del país
+        # Combinar plazas de ambos sets de datos para no perder ninguna zona
         plazas_totales = sorted(list(set(df_vacantes['plaza'].dropna().unique().tolist() + df_entrenamiento['plaza'].dropna().unique().tolist())))
         plaza_seleccionada = st.sidebar.multiselect("Filtrar por Plaza:", plazas_totales, default=plazas_totales)
         
@@ -97,24 +97,28 @@ if df_vacantes is not None and df_entrenamiento is not None:
         ]
         df_ent_filtrado = df_entrenamiento[df_entrenamiento['plaza'].isin(plaza_seleccionada)].copy()
 
-        # --- SECCIÓN 1: METRICS ---
-        st.subheader("📌 Resumen Ejecutivo de Reclutamiento")
+        # --- SECCIÓN 1: METRICS (ACTUALIZADA) ---
+        st.subheader("📌 Resumen Ejecutivo General")
         col1, col2, col3, col4 = st.columns(4)
         
         dias_col = [c for c in df_vac_filtrado.columns if 'días vacantes' in c or 'dias' in c]
         dias_col = dias_col[0] if dias_col else None
         
         with col1:
-            st.markdown(f'<div class="metric-box"><div class="metric-title">Total Vacantes</div><div class="metric-value">{len(df_vac_filtrado)}</div></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="metric-box"><div class="metric-title">Total Vacantes Solicitadas</div><div class="metric-value">{len(df_vac_filtrado)}</div></div>', unsafe_allow_html=True)
+        
         with col2:
             dias_promedio = int(df_vac_filtrado[dias_col].mean()) if dias_col and not df_vac_filtrado[dias_col].dropna().empty else 0
-            st.markdown(f'<div class="metric-box"><div class="metric-title">Días Vacantes Promedio</div><div class="metric-value">{dias_promedio} días</div></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="metric-box"><div class="metric-title">Tiempo de Cobertura Promedio</div><div class="metric-value">{dias_promedio} días</div></div>', unsafe_allow_html=True)
+        
         with col3:
-            en_sies = len(df_vac_filtrado[df_vac_filtrado[estatus_col].astype(str).str.upper() == 'SIES']) if not df_vac_filtrado.empty else 0
-            st.markdown(f'<div class="metric-box"><div class="metric-title">Vacantes en SIES</div><div class="metric-value">{en_sies}</div></div>', unsafe_allow_html=True)
+            # 🚨 NUEVA MÉTRICA: Conteo total de colaboradores registrados en el proceso de entrenamiento
+            total_colaboradores = len(df_ent_filtrado)
+            st.markdown(f'<div class="metric-box"><div class="metric-title">Total Colaboradores en Entto.</div><div class="metric-value">{total_colaboradores}</div></div>', unsafe_allow_html=True)
+        
         with col4:
-            en_atraccion = len(df_vac_filtrado[df_vac_filtrado[estatus_col].astype(str).str.upper() == 'PROCESO DE ATRACCIÓN']) if not df_vac_filtrado.empty else 0
-            st.markdown(f'<div class="metric-box"><div class="metric-title">En Reclutamiento/Atracción</div><div class="metric-value">{en_atraccion}</div></div>', unsafe_allow_html=True)
+            en_sies = len(df_vac_filtrado[df_vac_filtrado[estatus_col].astype(str).str.upper() == 'SIES']) if not df_vac_filtrado.empty else 0
+            st.markdown(f'<div class="metric-box"><div class="metric-title">Vacantes en Estatus SIES</div><div class="metric-value">{en_sies}</div></div>', unsafe_allow_html=True)
 
         st.markdown("---")
 
@@ -151,7 +155,7 @@ if df_vacantes is not None and df_entrenamiento is not None:
                 else:
                     st.info("ℹ️ No hay suficientes fechas válidas en el rango seleccionado para calcular el SLA.")
             else:
-                st.info("Faltan columnas de Fechas de Inreso/Liberación para calcular el SLA.")
+                st.info("Faltan columnas de Fechas de Ingreso/Liberación para calcular el SLA.")
 
         with col_ret:
             if zona_col and baja_col:
