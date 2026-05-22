@@ -74,6 +74,27 @@ if uploaded_file is not None:
             if 'plaza' in df_ent_raw.columns:
                 df_entrenamiento = df_ent_raw.dropna(subset=['plaza'])
 
+        # 🚨 BLINDAJE ANTIDUPLICADOS DESDE LA CARGA RAÍZ 🚨
+        if df_vacantes is not None and 'plaza' in df_vacantes.columns:
+            df_vacantes['plaza'] = df_vacantes['plaza'].astype(str).str.strip().str.upper().str.replace('Í', 'I', regex=False)
+
+        if df_entrenamiento is not None:
+            if 'plaza' in df_entrenamiento.columns:
+                df_entrenamiento['plaza'] = df_entrenamiento['plaza'].astype(str).str.strip().str.upper().str.replace('Í', 'I', regex=False)
+            if 'zona' in df_entrenamiento.columns:
+                df_entrenamiento['zona'] = (
+                    df_entrenamiento['zona']
+                    .fillna("SIN ZONA")
+                    .astype(str)
+                    .str.strip()
+                    .str.upper()
+                    .str.replace('Í', 'I', regex=False)
+                    .str.replace('Á', 'A', regex=False)
+                    .str.replace('É', 'E', regex=False)
+                    .str.replace('Ó', 'O', regex=False)
+                    .str.replace('Ú', 'U', regex=False)
+                )
+
     except Exception as e:
         st.sidebar.error(f"Error al procesar las pestañas del Excel: {e}")
 
@@ -82,35 +103,20 @@ if df_vacantes is not None and df_entrenamiento is not None:
     
     if 'plaza' in df_vacantes.columns and 'plaza' in df_entrenamiento.columns:
         
-        # Combinar todas las plazas únicas del Excel nacional
-        plazas_totales = sorted(list(set(df_vacantes['plaza'].dropna().astype(str).str.strip().unique().tolist() + df_entrenamiento['plaza'].dropna().astype(str).str.strip().unique().tolist())))
+        # Combinar plazas homologadas de forma segura
+        plazas_totales = sorted(list(set(df_vacantes['plaza'].dropna().unique().tolist() + df_entrenamiento['plaza'].dropna().unique().tolist())))
         plaza_seleccionada = st.sidebar.multiselect("Filtrar por Plaza:", plazas_totales, default=plazas_totales)
         
         estatus_col = 'estatus' if 'estatus' in df_vacantes.columns else df_vacantes.columns[0]
         estatus_disponibles = sorted(df_vacantes[estatus_col].dropna().unique().tolist())
         estatus_seleccionado = st.sidebar.multiselect("Estatus de Vacante:", estatus_disponibles, default=estatus_disponibles)
 
-        # Filtrar sets de datos
+        # Filtrar de manera independiente con llaves homologadas
         df_vac_filtrado = df_vacantes[
             (df_vacantes['plaza'].isin(plaza_seleccionada)) & 
             (df_vacantes[estatus_col].isin(estatus_seleccionado))
         ]
         df_ent_filtrado = df_entrenamiento[df_entrenamiento['plaza'].isin(plaza_seleccionada)].copy()
-
-        # 🚨 HOMOLOGACIÓN CRÍTICA CONTRA DUPLICADOS DE ZONA (MÁGICO)
-        if 'zona' in df_ent_filtrado.columns:
-            df_ent_filtrado['zona'] = (
-                df_ent_filtrado['zona']
-                .fillna("SIN ZONA")
-                .astype(str)
-                .str.strip()               # Borra espacios fantasmas al inicio/final
-                .str.upper()               # Todo a MAYÚSCULAS (Centro Sur -> CENTRO SUR)
-                .str.replace('Í', 'I', regex=False) # Quita el acento (PACÍFICO -> PACIFICO)
-                .str.replace('Á', 'A', regex=False)
-                .str.replace('É', 'E', regex=False)
-                .str.replace('Ó', 'O', regex=False)
-                .str.replace('Ú', 'U', regex=False)
-            )
 
         # --- SECCIÓN 1: METRICS ---
         st.subheader("📌 Resumen Ejecutivo General")
