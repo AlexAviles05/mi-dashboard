@@ -82,15 +82,15 @@ if df_vacantes is not None and df_entrenamiento is not None:
     
     if 'plaza' in df_vacantes.columns and 'plaza' in df_entrenamiento.columns:
         
-        # Filtros en barra lateral
-        plazas_disponibles = sorted(df_vacantes['plaza'].dropna().unique().tolist())
-        plaza_seleccionada = st.sidebar.multiselect("Filtrar por Plaza:", plazas_disponibles, default=plazas_disponibles)
+        # 🚨 SOLUCIÓN DE QA: Combinar plazas de AMBOS archivos para que no falte ninguna zona del país
+        plazas_totales = sorted(list(set(df_vacantes['plaza'].dropna().unique().tolist() + df_entrenamiento['plaza'].dropna().unique().tolist())))
+        plaza_seleccionada = st.sidebar.multiselect("Filtrar por Plaza:", plazas_totales, default=plazas_totales)
         
         estatus_col = 'estatus' if 'estatus' in df_vacantes.columns else df_vacantes.columns[0]
         estatus_disponibles = sorted(df_vacantes[estatus_col].dropna().unique().tolist())
         estatus_seleccionado = st.sidebar.multiselect("Estatus de Vacante:", estatus_disponibles, default=estatus_disponibles)
 
-        # Filtrar sets de datos
+        # Filtrar de manera independiente
         df_vac_filtrado = df_vacantes[
             (df_vacantes['plaza'].isin(plaza_seleccionada)) & 
             (df_vacantes[estatus_col].isin(estatus_seleccionado))
@@ -110,10 +110,10 @@ if df_vacantes is not None and df_entrenamiento is not None:
             dias_promedio = int(df_vac_filtrado[dias_col].mean()) if dias_col and not df_vac_filtrado[dias_col].dropna().empty else 0
             st.markdown(f'<div class="metric-box"><div class="metric-title">Días Vacantes Promedio</div><div class="metric-value">{dias_promedio} días</div></div>', unsafe_allow_html=True)
         with col3:
-            en_sies = len(df_vac_filtrado[df_vac_filtrado[estatus_col].astype(str).str.upper() == 'SIES'])
+            en_sies = len(df_vac_filtrado[df_vac_filtrado[estatus_col].astype(str).str.upper() == 'SIES']) if not df_vac_filtrado.empty else 0
             st.markdown(f'<div class="metric-box"><div class="metric-title">Vacantes en SIES</div><div class="metric-value">{en_sies}</div></div>', unsafe_allow_html=True)
         with col4:
-            en_atraccion = len(df_vac_filtrado[df_vac_filtrado[estatus_col].astype(str).str.upper() == 'PROCESO DE ATRACCIÓN'])
+            en_atraccion = len(df_vac_filtrado[df_vac_filtrado[estatus_col].astype(str).str.upper() == 'PROCESO DE ATRACCIÓN']) if not df_vac_filtrado.empty else 0
             st.markdown(f'<div class="metric-box"><div class="metric-title">En Reclutamiento/Atracción</div><div class="metric-value">{en_atraccion}</div></div>', unsafe_allow_html=True)
 
         st.markdown("---")
@@ -129,14 +129,10 @@ if df_vacantes is not None and df_entrenamiento is not None:
 
         with col_sla:
             if f_ingreso and f_liberacion and zona_col:
-                # 🚨 BLINDAJE SUPREMO: Convertir a texto explícito antes de procesar para evitar errores con enteros huérfanos
                 df_ent_filtrado['date_ingreso'] = pd.to_datetime(df_ent_filtrado[f_ingreso].astype(str), errors='coerce')
                 df_ent_filtrado['date_libera'] = pd.to_datetime(df_ent_filtrado[f_liberacion].astype(str), errors='coerce')
-                
-                # Calcular la diferencia en días
                 df_ent_filtrado['sla_dias'] = (df_ent_filtrado['date_libera'] - df_ent_filtrado['date_ingreso']).dt.days
                 
-                # Filtrar registros limpios para promediar
                 df_sla_clean = df_ent_filtrado.dropna(subset=['sla_dias'])
                 df_sla_clean = df_sla_clean[df_sla_clean['sla_dias'] >= 0]
                 
@@ -155,7 +151,7 @@ if df_vacantes is not None and df_entrenamiento is not None:
                 else:
                     st.info("ℹ️ No hay suficientes fechas válidas en el rango seleccionado para calcular el SLA.")
             else:
-                st.info("Faltan columnas de Fechas de Ingreso/Liberación para calcular el SLA.")
+                st.info("Faltan columnas de Fechas de Inreso/Liberación para calcular el SLA.")
 
         with col_ret:
             if zona_col and baja_col:
@@ -164,7 +160,6 @@ if df_vacantes is not None and df_entrenamiento is not None:
                     lambda x: 'Retenido / Activo' if 'NO' in x or 'NAN' in x or x == '' else 'Baja / Deserción'
                 )
                 
-                # Renderizar histograma en formato de porcentaje total agrupado
                 fig_ret = px.histogram(
                     df_ent_filtrado, x=zona_col, color='estatus_empleado',
                     barnorm='percent',
@@ -180,18 +175,21 @@ if df_vacantes is not None and df_entrenamiento is not None:
 
         st.markdown("---")
 
-        # --- SECCIÓN 3: GRÁFICAS OPERATIVAS ANTERIORES ---
+        # --- SECCIÓN 3: GRÁFICAS OPERATIVAS ---
         col_graf1, col_graf2 = st.columns(2)
         
         with col_graf1:
             st.subheader("💼 Estatus de Requisiciones por Plaza")
-            fig_vac = px.bar(
-                df_vac_filtrado, x="plaza", color=estatus_col, barmode="stack",
-                title="Distribución de Requerimientos Operativos",
-                color_discrete_sequence=px.colors.qualitative.Safe
-            )
-            fig_vac.update_layout(template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
-            st.plotly_chart(fig_vac, use_container_width=True)
+            if not df_vac_filtrado.empty:
+                fig_vac = px.bar(
+                    df_vac_filtrado, x="plaza", color=estatus_col, barmode="stack",
+                    title="Distribución de Requerimientos Operativos",
+                    color_discrete_sequence=px.colors.qualitative.Safe
+                )
+                fig_vac.update_layout(template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
+                st.plotly_chart(fig_vac, use_container_width=True)
+            else:
+                st.info("No hay requerimientos activos en las plazas seleccionadas.")
             
         with col_graf2:
             st.subheader("🏃‍♂️ Control de Bajas en Entrenamiento")
@@ -213,11 +211,11 @@ if df_vacantes is not None and df_entrenamiento is not None:
         st.markdown("---")
 
         # --- SECCIÓN 4: DETALLE POR TIENDA ---
-        tienda_col = 'tienda' if 'tienda' in df_vac_filtrado.columns else df_vac_filtrado.columns[1]
+        tienda_col = 'tienda' if 'tienda' in df_vac_filtrado.columns else (df_vac_filtrado.columns[1] if len(df_vac_filtrado.columns) > 1 else None)
         tipo_vac_col = [c for c in df_vac_filtrado.columns if 'apertura' in c or 'rotación' in c or 'cuadrilla' in c]
         tipo_vac_col = tipo_vac_col[0] if tipo_vac_col else None
 
-        if tipo_vac_col:
+        if tienda_col and tipo_vac_col and not df_vac_filtrado.empty:
             st.subheader("🏬 Apertura vs Rotación por Tienda/Sucursal")
             fig_tipo = px.histogram(
                 df_vac_filtrado, x=tienda_col, color=tipo_vac_col, barmode="group",
