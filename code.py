@@ -129,9 +129,9 @@ if df_vacantes is not None and df_entrenamiento is not None:
 
         with col_sla:
             if f_ingreso and f_liberacion and zona_col:
-                # Convertir a fecha forzando los errores a NaT (para ignorar texto de comentarios)
-                df_ent_filtrado['date_ingreso'] = pd.to_datetime(df_ent_filtrado[f_ingreso], errors='coerce')
-                df_ent_filtrado['date_libera'] = pd.to_datetime(df_ent_filtrado[f_liberacion], errors='coerce')
+                # 🚨 BLINDAJE SUPREMO: Convertir a texto explícito antes de procesar para evitar errores con enteros huérfanos
+                df_ent_filtrado['date_ingreso'] = pd.to_datetime(df_ent_filtrado[f_ingreso].astype(str), errors='coerce')
+                df_ent_filtrado['date_libera'] = pd.to_datetime(df_ent_filtrado[f_liberacion].astype(str), errors='coerce')
                 
                 # Calcular la diferencia en días
                 df_ent_filtrado['sla_dias'] = (df_ent_filtrado['date_libera'] - df_ent_filtrado['date_ingreso']).dt.days
@@ -164,9 +164,11 @@ if df_vacantes is not None and df_entrenamiento is not None:
                     lambda x: 'Retenido / Activo' if 'NO' in x or 'NAN' in x or x == '' else 'Baja / Deserción'
                 )
                 
+                # Renderizar histograma en formato de porcentaje total agrupado
                 fig_ret = px.histogram(
                     df_ent_filtrado, x=zona_col, color='estatus_empleado',
-                    barmode='percent',
+                    barnorm='percent',
+                    barmode='group',
                     title="Porcentaje de Retención vs Deserción por Zona",
                     color_discrete_map={'Retenido / Activo': '#2ecc71', 'Baja / Deserción': '#e74c3c'},
                     labels={'estatus_empleado': 'Estatus Final', 'zona': 'Zona'}
