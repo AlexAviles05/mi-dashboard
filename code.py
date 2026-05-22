@@ -41,8 +41,11 @@ df_entrenamiento = None
 
 if uploaded_file is not None:
     try:
-        df_vacantes = pd.read_excel(uploaded_file, sheet_name=0) # Hoja 1
-        df_entrenamiento = pd.read_excel(uploaded_file, sheet_name="CONCENTRADO", header=2) # Encabezados reales fila 3
+        # CAMBIO AQUÍ: Cambiamos el 0 por "Hoja1" entre comillas
+        df_vacantes = pd.read_excel(uploaded_file, sheet_name="Hoja1") 
+        
+        # Asegúrate de que el nombre "CONCENTRADO" esté en mayúsculas tal cual tu Excel
+        df_entrenamiento = pd.read_excel(uploaded_file, sheet_name="CONCENTRADO", header=1) 
     except Exception as e:
         st.sidebar.error(f"Error al leer las pestañas: {e}")
 else:
