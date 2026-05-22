@@ -122,19 +122,4 @@ if df_vacantes is not None and df_entrenamiento is not None:
         st.subheader("📌 Resumen Ejecutivo General")
         col1, col2, col3, col4 = st.columns(4)
         
-        dias_col = [c for c in df_vac_filtrado.columns if 'días vacantes' in c or 'dias' in c]
-        dias_col = dias_col[0] if dias_col else None
-        
-        with col1:
-            st.markdown(f'<div class="metric-box"><div class="metric-title">Total Vacantes Solicitadas</div><div class="metric-value">{len(df_vac_filtrado)}</div></div>', unsafe_allow_html=True)
-        
-        with col2:
-            dias_promedio = int(df_vac_filtrado[dias_col].mean()) if dias_col and not df_vac_filtrado[dias_col].dropna().empty else 0
-            st.markdown(f'<div class="metric-box"><div class="metric-title">Tiempo de Cobertura Promedio</div><div class="metric-value">{dias_promedio} días</div></div>', unsafe_allow_html=True)
-        
-        with col3:
-            total_colaboradores = df_ent_filtrado['num de colaborador'].dropna().nunique() if 'num de colaborador' in df_ent_filtrado.columns else len(df_ent_filtrado)
-            st.markdown(f'<div class="metric-box"><div class="metric-title">Total Colaboradores Únicos</div><div class="metric-value">{total_colaboradores}</div></div>', unsafe_allow_html=True)
-        
-        with col4:
-            en_sies = len(df_vac_filtrado
+        dias_col =
