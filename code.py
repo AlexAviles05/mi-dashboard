@@ -46,7 +46,6 @@ if uploaded_file is not None:
             df_vacantes = df_vac_raw.dropna(subset=['plaza'])
             df_vacantes = df_vacantes[~df_vacantes['plaza'].astype(str).str.contains('seguimiento|contrataciones|requisiciones', na=False)]
         else:
-            # Si no está en la fila 1, buscarla dinámicamente
             for i, row in enumerate(df_vac_raw.values[:5]):
                 row_str = [str(x).strip().lower() for x in row]
                 if 'plaza' in row_str:
@@ -59,21 +58,18 @@ if uploaded_file is not None:
         # --- PROCESAR HOJA CONCENTRADO (ENTRENAMIENTO) ---
         df_ent_raw = pd.read_excel(uploaded_file, sheet_name="CONCENTRADO")
         
-        # BUSCADOR DINÁMICO DE ENCABEZADOS DE QA:
         header_row_idx = None
-        for i, row in enumerate(df_ent_raw.values[:10]):  # Escanea las primeras 10 filas
+        for i, row in enumerate(df_ent_raw.values[:10]):
             row_str = [str(x).strip().lower() for x in row]
             if 'plaza' in row_str:
                 header_row_idx = i
                 break
         
         if header_row_idx is not None:
-            # Recargar la pestaña usando la fila exacta donde se encontró "Plaza"
             df_entrenamiento = pd.read_excel(uploaded_file, sheet_name="CONCENTRADO", header=header_row_idx + 1)
             df_entrenamiento.columns = df_entrenamiento.columns.astype(str).str.strip().str.lower()
             df_entrenamiento = df_entrenamiento.dropna(subset=['plaza'])
         else:
-            # Intento de respaldo a la fuerza si falló el buscador
             df_ent_raw.columns = df_ent_raw.columns.astype(str).str.strip().str.lower()
             if 'plaza' in df_ent_raw.columns:
                 df_entrenamiento = df_ent_raw.dropna(subset=['plaza'])
@@ -81,12 +77,12 @@ if uploaded_file is not None:
     except Exception as e:
         st.sidebar.error(f"Error al procesar las pestañas del Excel: {e}")
 
-# 3. Renderizar Dashboard SOLO si la estructura pasó el escaneo
+# 3. Renderizar Dashboard
 if df_vacantes is not None and df_entrenamiento is not None:
     
     if 'plaza' in df_vacantes.columns and 'plaza' in df_entrenamiento.columns:
         
-        # Selectores dinámicos basados en columnas normalizadas
+        # Filtros en barra lateral
         plazas_disponibles = sorted(df_vacantes['plaza'].dropna().unique().tolist())
         plaza_seleccionada = st.sidebar.multiselect("Filtrar por Plaza:", plazas_disponibles, default=plazas_disponibles)
         
@@ -94,12 +90,12 @@ if df_vacantes is not None and df_entrenamiento is not None:
         estatus_disponibles = sorted(df_vacantes[estatus_col].dropna().unique().tolist())
         estatus_seleccionado = st.sidebar.multiselect("Estatus de Vacante:", estatus_disponibles, default=estatus_disponibles)
 
-        # Filtrado en tiempo real
+        # Filtrar sets de datos
         df_vac_filtrado = df_vacantes[
             (df_vacantes['plaza'].isin(plaza_seleccionada)) & 
             (df_vacantes[estatus_col].isin(estatus_seleccionado))
         ]
-        df_ent_filtrado = df_entrenamiento[df_entrenamiento['plaza'].isin(plaza_seleccionada)]
+        df_ent_filtrado = df_entrenamiento[df_entrenamiento['plaza'].isin(plaza_seleccionada)].copy()
 
         # --- SECCIÓN 1: METRICS ---
         st.subheader("📌 Resumen Ejecutivo de Reclutamiento")
@@ -122,16 +118,66 @@ if df_vacantes is not None and df_entrenamiento is not None:
 
         st.markdown("---")
 
-        # --- SECCIÓN 2: GRÁFICAS ---
+        # --- 🚨 NUEVA SECCIÓN: SLA Y RETENCIÓN POR ZONA ---
+        st.subheader("📈 Métricas Críticas: SLA y Retención por Zona")
+        col_sla, col_ret = st.columns(2)
+        
+        # Identificar dinámicamente columnas de zona y fechas
+        zona_col = 'zona' if 'zona' in df_ent_filtrado.columns else None
+        f_ingreso = [c for c in df_ent_filtrado.columns if 'ingreso' in c][0] if [c for c in df_ent_filtrado.columns if 'ingreso' in c] else None
+        f_liberacion = [c for c in df_ent_filtrado.columns if 'liberación' in c or 'liberacion' in c][0] if [c for c in df_ent_filtrado.columns if 'liberación' in c or 'liberacion' in c] else None
+        baja_col = [c for c in df_ent_filtrado.columns if 'baja entrenamiento' in c or 'tipo de baja' in c][0] if [c for c in df_ent_filtrado.columns if 'baja entrenamiento' in c or 'tipo de baja' in c] else None
+
+        with col_sla:
+            if f_ingreso and f_liberacion and zona_col:
+                # Calcular días de entrenamiento (SLA) de forma segura
+                df_ent_filtrado['date_ingreso'] = pd.to_datetime(df_ent_filtrado[f_ingreso], errors='coerce')
+                df_ent_filtrado['date_libera'] = pd.to_datetime(df_ent_filtrado[f_liberacion], errors='coerce')
+                df_ent_filtrado['sla_dias'] = (df_ent_filtrado['date_libera'] - df_ent_filtrado['date_ingreso']).dt.days
+                
+                # Filtrar valores coherentes para promediar
+                df_sla = df_ent_filtrado[df_ent_filtrado['sla_dias'] >= 0].groupby(zona_col)['sla_dias'].mean().reset_index()
+                df_sla.columns = ['Zona', 'Días Promedio para Liberación']
+                
+                fig_sla = px.bar(
+                    df_sla, x='Zona', y='Días Promedio para Liberación',
+                    title="SLA Promedio de Capacitación por Zona (Días)",
+                    color='Días Promedio para Liberación',
+                    color_continuous_scale=px.colors.sequential.Blues
+                )
+                fig_sla.update_layout(template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
+                st.plotly_chart(fig_sla, use_container_width=True)
+            else:
+                st.info("Faltan columnas de Fechas de Ingreso/Liberación para calcular el SLA.")
+
+        with col_ret:
+            if zona_col and baja_col:
+                # Si dice "NO" en baja entrenamiento significa que el colaborador se retuvo (Sigue activo)
+                df_ent_filtrado['estatus_empleado'] = df_ent_filtrado[baja_col].astype(str).str.strip().str.upper().apply(
+                    lambda x: 'Retenido / Activo' if 'NO' in x or 'NAN' in x or x == '' else 'Baja / Deserción'
+                )
+                
+                fig_ret = px.histogram(
+                    df_ent_filtrado, x=zona_col, color='estatus_empleado',
+                    barmode='percent', # Muestra la tasa porcentual directa
+                    title="Porcentaje de Retención vs Deserción por Zona",
+                    color_discrete_map={'Retenido / Activo': '#2ecc71', 'Baja / Deserción': '#e74c3c'},
+                    labels={'estatus_empleado': 'Estatus Final'}
+                )
+                fig_ret.update_layout(template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', yaxis_title="Porcentaje (%)")
+                st.plotly_chart(fig_ret, use_container_width=True)
+            else:
+                st.info("Columna de estatus de bajas no encontrada para calcular Retención.")
+
+        st.markdown("---")
+
+        # --- SECCIÓN 3: GRÁFICAS OPERATIVAS ANTERIORES ---
         col_graf1, col_graf2 = st.columns(2)
         
         with col_graf1:
             st.subheader("💼 Estatus de Requisiciones por Plaza")
             fig_vac = px.bar(
-                df_vac_filtrado, 
-                x="plaza", 
-                color=estatus_col,
-                barmode="stack",
+                df_vac_filtrado, x="plaza", color=estatus_col, barmode="stack",
                 title="Distribución de Requerimientos Operativos",
                 color_discrete_sequence=px.colors.qualitative.Safe
             )
@@ -148,21 +194,16 @@ if df_vacantes is not None and df_entrenamiento is not None:
                 df_bajas.columns = ['Tipo de Baja', 'Cantidad']
                 
                 fig_bajas = px.pie(
-                    df_bajas, 
-                    values='Cantidad', 
-                    names='Tipo de Baja', 
-                    hole=0.4,
+                    df_bajas, values='Cantidad', names='Tipo de Baja', hole=0.4,
                     title="Motivos de Deserción en Capacitación",
                     color_discrete_sequence=["#e74c3c", "#f39c12", "#3498db"]
                 )
                 fig_bajas.update_layout(template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
                 st.plotly_chart(fig_bajas, use_container_width=True)
-            else:
-                st.info("No se detectaron columnas o datos válidos de bajas en esta sección.")
 
         st.markdown("---")
 
-        # --- SECCIÓN 3: DETALLE POR TIENDA ---
+        # --- SECCIÓN 4: DETALLE POR TIENDA ---
         tienda_col = 'tienda' if 'tienda' in df_vac_filtrado.columns else df_vac_filtrado.columns[1]
         tipo_vac_col = [c for c in df_vac_filtrado.columns if 'apertura' in c or 'rotación' in c or 'cuadrilla' in c]
         tipo_vac_col = tipo_vac_col[0] if tipo_vac_col else None
@@ -170,10 +211,7 @@ if df_vacantes is not None and df_entrenamiento is not None:
         if tipo_vac_col:
             st.subheader("🏬 Apertura vs Rotación por Tienda/Sucursal")
             fig_tipo = px.histogram(
-                df_vac_filtrado, 
-                x=tienda_col, 
-                color=tipo_vac_col,
-                barmode="group",
+                df_vac_filtrado, x=tienda_col, color=tipo_vac_col, barmode="group",
                 title="Naturaleza de las Vacantes Vigentes por Sucursal"
             )
             fig_tipo.update_layout(template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', xaxis_tickangle=-45)
@@ -189,5 +227,4 @@ if df_vacantes is not None and df_entrenamiento is not None:
     else:
         st.error("❌ Estructura crítica ausente. Asegúrate de que ambas pestañas del Excel contengan una columna identificada como 'Plaza'.")
 else:
-    # Mensaje amigable de bienvenida antes de que se suba el archivo
     st.info("👋 ¡Hola! Para desplegar la maqueta de gráficos y KPIs, por favor arrastra el archivo 'Bitácora KPIS.xlsx' en la sección de la barra lateral izquierda.")
