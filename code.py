@@ -129,21 +129,31 @@ if df_vacantes is not None and df_entrenamiento is not None:
 
         with col_sla:
             if f_ingreso and f_liberacion and zona_col:
+                # Convertir a fecha forzando los errores a NaT (para ignorar texto de comentarios)
                 df_ent_filtrado['date_ingreso'] = pd.to_datetime(df_ent_filtrado[f_ingreso], errors='coerce')
                 df_ent_filtrado['date_libera'] = pd.to_datetime(df_ent_filtrado[f_liberacion], errors='coerce')
+                
+                # Calcular la diferencia en días
                 df_ent_filtrado['sla_dias'] = (df_ent_filtrado['date_libera'] - df_ent_filtrado['date_ingreso']).dt.days
                 
-                df_sla = df_ent_filtrado[df_ent_filtrado['sla_dias'] >= 0].groupby(zona_col)['sla_dias'].mean().reset_index()
-                df_sla.columns = ['Zona', 'Días Promedio para Liberación']
+                # Filtrar registros limpios para promediar
+                df_sla_clean = df_ent_filtrado.dropna(subset=['sla_dias'])
+                df_sla_clean = df_sla_clean[df_sla_clean['sla_dias'] >= 0]
                 
-                fig_sla = px.bar(
-                    df_sla, x='Zona', y='Días Promedio para Liberación',
-                    title="SLA Promedio de Capacitación por Zona (Días)",
-                    color='Días Promedio para Liberación',
-                    color_continuous_scale=px.colors.sequential.Blues
-                )
-                fig_sla.update_layout(template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
-                st.plotly_chart(fig_sla, use_container_width=True)
+                if not df_sla_clean.empty:
+                    df_sla = df_sla_clean.groupby(zona_col)['sla_dias'].mean().reset_index()
+                    df_sla.columns = ['Zona', 'Días Promedio para Liberación']
+                    
+                    fig_sla = px.bar(
+                        df_sla, x='Zona', y='Días Promedio para Liberación',
+                        title="SLA Promedio de Capacitación por Zona (Días)",
+                        color='Días Promedio para Liberación',
+                        color_continuous_scale=px.colors.sequential.Blues
+                    )
+                    fig_sla.update_layout(template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
+                    st.plotly_chart(fig_sla, use_container_width=True)
+                else:
+                    st.info("ℹ️ No hay suficientes fechas válidas en el rango seleccionado para calcular el SLA.")
             else:
                 st.info("Faltan columnas de Fechas de Ingreso/Liberación para calcular el SLA.")
 
