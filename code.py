@@ -2,14 +2,14 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-# 1. Configuración de la Página Web (Diseño Extenso/Wide)
+# 1. Configuración de la Página Web
 st.set_page_config(
     page_title="People analytics HR - Dashboard Control de KPIs", 
     page_icon="📊", 
     layout="wide"
 )
 
-# Estilo personalizado para las tarjetas de métricas (KPIS)
+# Estilo personalizado para las tarjetas de métricas
 st.markdown("""
     <style>
     .metric-box {
@@ -29,59 +29,44 @@ st.markdown("""
 st.title("📊 Panel de Control Operativo - KPIs & Entrenamiento")
 st.markdown("Consumo de datos automatizado desde *Bitácora KPIS.xlsx*")
 
-# 2. Configuración e Ingesta de Datos (Barra Lateral)
-st.sidebar.image("https://via.placeholder.com/150x50/1e293b/38bdf8?text=Ozaru+One", width=150) # Cambiar por tu logo real
+# 2. Configuración en la Barra Lateral
 st.sidebar.header("🎯 Filtros Globales")
-
 uploaded_file = st.sidebar.file_uploader("Actualizar archivo de Bitácora (Excel)", type=["xlsx"])
 
-# Dataframes por defecto (Carga segura)
 df_vacantes = None
 df_entrenamiento = None
 
+# Intentar leer desde el archivo subido por el usuario
 if uploaded_file is not None:
     try:
-        # CAMBIO AQUÍ: Cambiamos el 0 por "Hoja1" entre comillas
-        df_vacantes = pd.read_excel(uploaded_file, sheet_name="Hoja1") 
+        df_vacantes = pd.read_excel(uploaded_file, sheet_name="Hoja1")
+        df_entrenamiento = pd.read_excel(uploaded_file, sheet_name="CONCENTRADO", header=1)
         
-        # Asegúrate de que el nombre "CONCENTRADO" esté en mayúsculas tal cual tu Excel
-        df_entrenamiento = pd.read_excel(uploaded_file, sheet_name="CONCENTRADO", header=1) 
-    except Exception as e:
-        st.sidebar.error(f"Error al leer las pestañas: {e}")
-else:
-    # Respaldos usando los CSV procesados en tu entorno
-    try:
-        df_vacantes = pd.read_csv("Bitácora KPIS.xlsx - Hoja1.csv")
-        # Limpiar filas informativas al final de la Hoja1
+        # Limpieza inicial de filas basura del Excel
         df_vacantes = df_vacantes.dropna(subset=['PLAZA'])
-        df_vacantes = df_vacantes[~df_vacantes['PLAZA'].str.contains('SEGUIMIENTO|CONTRATACIONES|REQUISICIONES', na=False)]
-        
-        # Cargar concentrado saltando las filas de títulos decorativos
-        df_entrenamiento = pd.read_csv("Bitácora KPIS.xlsx - CONCENTRADO.csv", header=1)
-        df_entrenamiento.columns = df_entrenamiento.iloc[0] # Forzar fila de nombres reales
-        df_entrenamiento = df_entrenamiento[1:].dropna(subset=['Plaza'])
-    except Exception:
-        st.warning("⚠️ Esperando archivo físico. Por favor sube 'Bitácora KPIS.xlsx' en la barra lateral.")
+        df_vacantes = df_vacantes[~df_vacantes['PLAZA'].astype(str).str.contains('SEGUIMIENTO|CONTRATACIONES|REQUISICIONES', na=False)]
+        df_entrenamiento = df_entrenamiento.dropna(subset=['Plaza'])
+    except Exception as e:
+        st.sidebar.error(f"Error al procesar las pestañas del Excel: {e}")
 
-# 3. Construcción del Dashboard Interactivo
+# 3. Renderizar Dashboard SOLO si los datos ya existen y están listos
 if df_vacantes is not None and df_entrenamiento is not None:
     
-    # Filtros dinámicos en barra lateral basados en tus columnas reales
+    # Selectores dinámicos en la barra lateral
     plazas_disponibles = sorted(df_vacantes['PLAZA'].dropna().unique().tolist())
     plaza_seleccionada = st.sidebar.multiselect("Filtrar por Plaza:", plazas_disponibles, default=plazas_disponibles)
     
     estatus_disponibles = sorted(df_vacantes['ESTATUS'].dropna().unique().tolist())
     estatus_seleccionado = st.sidebar.multiselect("Estatus de Vacante:", estatus_disponibles, default=estatus_disponibles)
 
-    # Filtrar dataframes basados en la selección del usuario
+    # Filtrado en tiempo real
     df_vac_filtrado = df_vacantes[
         (df_vacantes['PLAZA'].isin(plaza_seleccionada)) & 
         (df_vacantes['ESTATUS'].isin(estatus_seleccionado))
     ]
-    
     df_ent_filtrado = df_entrenamiento[df_entrenamiento['Plaza'].isin(plaza_seleccionada)]
 
-    # --- SECCIÓN 1: MAQUETA DE TARJETAS (KPI METRICS) ---
+    # --- SECCIÓN 1: METRICS ---
     st.subheader("📌 Resumen Ejecutivo de Reclutamiento")
     col1, col2, col3, col4 = st.columns(4)
     
@@ -100,7 +85,7 @@ if df_vacantes is not None and df_entrenamiento is not None:
 
     st.markdown("---")
 
-    # --- SECCIÓN 2: GRÁFICAS DEL REPORTE EXTENSO ---
+    # --- SECCIÓN 2: GRÁFICAS ---
     col_graf1, col_graf2 = st.columns(2)
     
     with col_graf1:
@@ -118,9 +103,9 @@ if df_vacantes is not None and df_entrenamiento is not None:
         
     with col_graf2:
         st.subheader("🏃‍♂️ Control de Bajas en Entrenamiento")
-        # Analizar tipos de baja en la bitácora de entrenamiento
-        if 'Tipo de baja \n(No show o Entrenamiento)' in df_ent_filtrado.columns:
-            df_bajas = df_ent_filtrado['Tipo de baja \n(No show o Entrenamiento)'].dropna().value_counts().reset_index()
+        tipo_baja_col = 'Tipo de baja \n(No show o Entrenamiento)'
+        if tipo_baja_col in df_ent_filtrado.columns:
+            df_bajas = df_ent_filtrado[tipo_baja_col].dropna().value_counts().reset_index()
             df_bajas.columns = ['Tipo de Baja', 'Cantidad']
             
             fig_bajas = px.pie(
@@ -134,13 +119,12 @@ if df_vacantes is not None and df_entrenamiento is not None:
             fig_bajas.update_layout(template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
             st.plotly_chart(fig_bajas, use_container_width=True)
         else:
-            st.info("No se encontraron registros de columnas de bajas en este set de datos.")
+            st.info("No se detectaron bajas registradas en las plazas seleccionadas.")
 
     st.markdown("---")
 
-    # --- SECCIÓN 3: MONITOREO DE TIENDAS Y DETALLE ---
+    # --- SECCIÓN 3: DETALLE POR TIENDA ---
     st.subheader("🏬 Apertura vs Rotación por Tienda/Sucursal")
-    
     fig_tipo = px.histogram(
         df_vac_filtrado, 
         x="TIENDA", 
@@ -151,10 +135,14 @@ if df_vacantes is not None and df_entrenamiento is not None:
     fig_tipo.update_layout(template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', xaxis_tickangle=-45)
     st.plotly_chart(fig_tipo, use_container_width=True)
 
-    # Tablas de auditoría al fondo de la maqueta
+    # Expansores de auditoría de datos
     with st.expander("🔍 Ver Tablas Completas de Información Limpia"):
         tab1, tab2 = st.tabs(["📋 Requisiciones y Vacantes Activas", "🎓 Detalle de Alumnos en Entrenamiento"])
         with tab1:
             st.dataframe(df_vac_filtrado, use_container_width=True)
         with tab2:
             st.dataframe(df_ent_filtrado, use_container_width=True)
+
+else:
+    # Mensaje amigable de bienvenida antes de que se suba el archivo
+    st.info("👋 ¡Hola! Para desplegar la maqueta de gráficos y KPIs, por favor arrastra el archivo 'Bitácora KPIS.xlsx' en la sección de la barra lateral izquierda.")
