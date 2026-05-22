@@ -4,7 +4,7 @@ import plotly.express as px
 
 # 1. Configuración de la Página Web
 st.set_page_config(
-    page_title="People Analitycs HR - Dashboard Control de KPIs", 
+    page_title="Ozaru - Dashboard Control de KPIs", 
     page_icon="📊", 
     layout="wide"
 )
@@ -36,44 +36,65 @@ uploaded_file = st.sidebar.file_uploader("Actualizar archivo de Bitácora (Excel
 df_vacantes = None
 df_entrenamiento = None
 
-# Intentar leer desde el archivo subido por el usuario
 if uploaded_file is not None:
     try:
-        # Cargar hojas de forma segura
-        df_vacantes = pd.read_excel(uploaded_file, sheet_name="Hoja1")
-        df_entrenamiento = pd.read_excel(uploaded_file, sheet_name="CONCENTRADO", header=1)
+        # --- PROCESAR HOJA 1 (VACANTES) ---
+        df_vac_raw = pd.read_excel(uploaded_file, sheet_name="Hoja1")
+        df_vac_raw.columns = df_vac_raw.columns.astype(str).str.strip().str.lower()
         
-        # 🚨 BLINDAJE 1: Limpieza estricta de nombres de columnas (Quitar espacios y pasar a minúsculas)
-        df_vacantes.columns = df_vacantes.columns.astype(str).str.strip().str.lower()
-        df_entrenamiento.columns = df_entrenamiento.columns.astype(str).str.strip().str.lower()
-        
-        # Filtrar filas basura del Excel usando las nuevas columnas en minúsculas
-        if 'plaza' in df_vacantes.columns:
-            df_vacantes = df_vacantes.dropna(subset=['plaza'])
+        if 'plaza' in df_vac_raw.columns:
+            df_vacantes = df_vac_raw.dropna(subset=['plaza'])
             df_vacantes = df_vacantes[~df_vacantes['plaza'].astype(str).str.contains('seguimiento|contrataciones|requisiciones', na=False)]
+        else:
+            # Si no está en la fila 1, buscarla dinámicamente
+            for i, row in enumerate(df_vac_raw.values[:5]):
+                row_str = [str(x).strip().lower() for x in row]
+                if 'plaza' in row_str:
+                    df_vacantes = pd.read_excel(uploaded_file, sheet_name="Hoja1", header=i+1)
+                    df_vacantes.columns = df_vacantes.columns.astype(str).str.strip().str.lower()
+                    df_vacantes = df_vacantes.dropna(subset=['plaza'])
+                    df_vacantes = df_vacantes[~df_vacantes['plaza'].astype(str).str.contains('seguimiento|contrataciones|requisiciones', na=False)]
+                    break
+
+        # --- PROCESAR HOJA CONCENTRADO (ENTRENAMIENTO) ---
+        df_ent_raw = pd.read_excel(uploaded_file, sheet_name="CONCENTRADO")
         
-        if 'plaza' in df_entrenamiento.columns:
+        # BUSCADOR DINÁMICO DE ENCABEZADOS DE QA:
+        header_row_idx = None
+        for i, row in enumerate(df_ent_raw.values[:10]):  # Escanea las primeras 10 filas
+            row_str = [str(x).strip().lower() for x in row]
+            if 'plaza' in row_str:
+                header_row_idx = i
+                break
+        
+        if header_row_idx is not None:
+            # Recargar la pestaña usando la fila exacta donde se encontró "Plaza"
+            df_entrenamiento = pd.read_excel(uploaded_file, sheet_name="CONCENTRADO", header=header_row_idx + 1)
+            df_entrenamiento.columns = df_entrenamiento.columns.astype(str).str.strip().str.lower()
             df_entrenamiento = df_entrenamiento.dropna(subset=['plaza'])
-            
+        else:
+            # Intento de respaldo a la fuerza si falló el buscador
+            df_ent_raw.columns = df_ent_raw.columns.astype(str).str.strip().str.lower()
+            if 'plaza' in df_ent_raw.columns:
+                df_entrenamiento = df_ent_raw.dropna(subset=['plaza'])
+
     except Exception as e:
         st.sidebar.error(f"Error al procesar las pestañas del Excel: {e}")
 
-# 3. Renderizar Dashboard SOLO si los datos ya existen y pasaron el blindaje
+# 3. Renderizar Dashboard SOLO si la estructura pasó el escaneo
 if df_vacantes is not None and df_entrenamiento is not None:
     
-    # Validar que la columna 'plaza' exista en ambos archivos antes de continuar
     if 'plaza' in df_vacantes.columns and 'plaza' in df_entrenamiento.columns:
         
-        # Selectores dinámicos basados en columnas normalizadas (minúsculas)
+        # Selectores dinámicos basados en columnas normalizadas
         plazas_disponibles = sorted(df_vacantes['plaza'].dropna().unique().tolist())
         plaza_seleccionada = st.sidebar.multiselect("Filtrar por Plaza:", plazas_disponibles, default=plazas_disponibles)
         
-        # Control de la columna estatus
         estatus_col = 'estatus' if 'estatus' in df_vacantes.columns else df_vacantes.columns[0]
         estatus_disponibles = sorted(df_vacantes[estatus_col].dropna().unique().tolist())
         estatus_seleccionado = st.sidebar.multiselect("Estatus de Vacante:", estatus_disponibles, default=estatus_disponibles)
 
-        # Filtrado en tiempo real de forma segura
+        # Filtrado en tiempo real
         df_vac_filtrado = df_vacantes[
             (df_vacantes['plaza'].isin(plaza_seleccionada)) & 
             (df_vacantes[estatus_col].isin(estatus_seleccionado))
@@ -84,7 +105,6 @@ if df_vacantes is not None and df_entrenamiento is not None:
         st.subheader("📌 Resumen Ejecutivo de Reclutamiento")
         col1, col2, col3, col4 = st.columns(4)
         
-        # Control inteligente del nombre de columna de días vacantes
         dias_col = [c for c in df_vac_filtrado.columns if 'días vacantes' in c or 'dias' in c]
         dias_col = dias_col[0] if dias_col else None
         
@@ -159,7 +179,7 @@ if df_vacantes is not None and df_entrenamiento is not None:
             fig_tipo.update_layout(template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', xaxis_tickangle=-45)
             st.plotly_chart(fig_tipo, use_container_width=True)
 
-        # Expansores de auditoría de datos
+        # Expansores de datos
         with st.expander("🔍 Ver Tablas Completas de Información Limpia"):
             tab1, tab2 = st.tabs(["📋 Requisiciones y Vacantes Activas", "🎓 Detalle de Alumnos en Entrenamiento"])
             with tab1:
